@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from app.domain.schemas.assigned_task import AssignTask
 from app.services.assigned_task_service import assigned_task_service
 
-router = APIRouter(prefix="/assigned_task", tags=["assigned_task"])
+router = APIRouter(prefix="/assigned_task", tags=["Assigned_task"])
 
 
 @router.post("/{task_id}")

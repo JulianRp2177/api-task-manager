@@ -1,162 +1,191 @@
 import pytest
-from datetime import datetime
-from httpx import AsyncClient
-from unittest.mock import patch, AsyncMock
+from fastapi.testclient import TestClient
 from app.main import app
+from app.api.routes import task
+from app.infrastructure.database.models.user import User
+from unittest.mock import AsyncMock, patch
 
-BASE_URL = "/task"
+client = TestClient(app)
 
 
-class TestTaskEndpoints:
-    mock_user = AsyncMock(
-        id=1,
-        email="test@example.com",
-        full_name="Test User",
-        is_active=True,
-        hashed_password="mock_hashed_password",
-    )
+def mock_get_current_user():
+    return User(id=1, username="testuser", email="test@example.com")
 
-    list_out = {
+
+@pytest.fixture(autouse=True)
+def override_get_current_user():
+    app.dependency_overrides[task.get_current_user] = mock_get_current_user
+    yield
+    app.dependency_overrides = {}
+
+
+@patch("app.api.routes.task.task_service.create_list", new_callable=AsyncMock)
+def test_create_list(mock_create_list):
+    # Given
+    mock_create_list.return_value = {
         "id": 1,
-        "name": "My List",
-        "created_at": datetime.utcnow().isoformat(),
+        "name": "My list",
+        "created_at": "2025-08-07T14:03:19.297759Z",
         "tasks": [],
-        "completed_percentage": 0.0,
+        "completed_percentage": 0,
     }
 
-    task_out = {
+    payload = {"name": "My list"}
+    # When
+    response = client.post("/api/task/lists", json=payload)
+    # Then
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "My list"
+    assert data["id"] == 1
+
+    mock_create_list.assert_awaited_once()
+
+
+@patch("app.api.routes.task.task_service.get_all_lists", new_callable=AsyncMock)
+def test_get_lists(mock_get_all_lists):
+    mock_get_all_lists.return_value = [
+        {
+            "id": 1,
+            "name": "job",
+            "created_at": "2025-08-06T18:30:37.097015Z",
+            "tasks": [
+                {
+                    "id": 1,
+                    "title": "programmer",
+                    "description": "vscode",
+                    "priority": 1,
+                    "completed": False,
+                    "created_at": "2025-08-06T18:40:29.889838Z",
+                }
+            ],
+            "completed_percentage": 0,
+        },
+        {
+            "id": 2,
+            "name": "test",
+            "created_at": "2025-08-07T13:55:39.476064Z",
+            "tasks": [],
+            "completed_percentage": 0,
+        },
+    ]
+
+    response = client.get("/api/task/lists")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 2
+
+
+@patch(
+    "app.api.routes.task.task_service.get_list_with_progress", new_callable=AsyncMock
+)
+def test_get_list_success(mock_get_list):
+    mock_get_list.return_value = {
         "id": 1,
-        "title": "New Task",
-        "description": "Sample",
-        "priority": 3,
-        "completed": False,
-        "created_at": datetime.utcnow().isoformat(),
-        "task_list_id": 1,
+        "name": "test",
+        "created_at": "2025-08-07T13:55:39.476064Z",
+        "tasks": [],
+        "completed_percentage": 0,
     }
 
-    def setup_mock_user(self, mock_get_user):
-        mock_get_user.return_value = self.mock_user
+    response = client.get("/api/task/lists/1")
+    assert response.status_code == 200
+    assert response.json()["id"] == 1
 
-    @pytest.mark.asyncio
-    @patch("app.api.routes.task.get_current_user", new_callable=AsyncMock)
-    @patch("app.services.task_service.task_service.create_list", new_callable=AsyncMock)
-    async def test_create_list_success(self, mock_create_list, mock_get_user):
-        self.setup_mock_user(mock_get_user)
-        mock_create_list.return_value = self.list_out
 
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.post(
-                f"{BASE_URL}/lists",
-                json={"name": "My List"},
-                headers={"Authorization": "Bearer mocktoken"},
-            )
+@patch(
+    "app.api.routes.task.task_service.get_list_with_progress", new_callable=AsyncMock
+)
+def test_get_list_not_found(mock_get_list):
+    mock_get_list.return_value = None
 
-        assert response.status_code == 201
-        assert response.json()["name"] == "My List"
+    response = client.get("/api/task/lists/999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Task list not found"
 
-    @pytest.mark.asyncio
-    @patch("app.api.routes.task.get_current_user", new_callable=AsyncMock)
-    @patch(
-        "app.services.task_service.task_service.get_all_lists",
-        new_callable=AsyncMock,
-    )
-    async def test_get_all_lists_success(self, mock_get_all_lists, mock_get_user):
-        self.setup_mock_user(mock_get_user)
-        mock_get_all_lists.return_value = [self.list_out]
 
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.get(
-                f"{BASE_URL}/lists", headers={"Authorization": "Bearer mocktoken"}
-            )
+@patch("app.api.routes.task.task_service.create_task", new_callable=AsyncMock)
+def test_create_task(mock_create_task):
+    mock_create_task.return_value = {
+        "id": 4,
+        "title": "Write tests",
+        "description": "c-test",
+        "priority": 2,
+        "completed": False,
+        "created_at": "2025-08-07T14:03:45.311669Z",
+    }
 
-        assert response.status_code == 200
-        assert isinstance(response.json(), list)
-        assert response.json()[0]["name"] == "My List"
+    payload = {"title": "Write tests", "description": "c-test", "priority": 2}
 
-    @pytest.mark.asyncio
-    @patch("app.api.routes.task.get_current_user", new_callable=AsyncMock)
-    @patch(
-        "app.services.task_service.task_service.get_list_with_progress",
-        new_callable=AsyncMock,
-    )
-    async def test_get_single_list_success(self, mock_get_list, mock_get_user):
-        self.setup_mock_user(mock_get_user)
-        mock_get_list.return_value = self.list_out
+    response = client.post("/api/task/lists/1/tasks", json=payload)
+    assert response.status_code == 201
+    assert response.json()["title"] == "Write tests"
 
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.get(
-                f"{BASE_URL}/lists/1", headers={"Authorization": "Bearer mocktoken"}
-            )
 
-        assert response.status_code == 200
-        assert response.json()["name"] == "My List"
+@patch("app.api.routes.task.task_service.list_tasks", new_callable=AsyncMock)
+def test_list_tasks(mock_list_tasks):
+    mock_list_tasks.return_value = [
+        {
+            "id": 4,
+            "title": "test",
+            "description": "c-test",
+            "priority": 2,
+            "completed": False,
+            "created_at": "2025-08-07T14:03:45.311669Z",
+        },
+        {
+            "id": 5,
+            "title": "test",
+            "description": "c-test",
+            "priority": 1,
+            "completed": False,
+            "created_at": "2025-08-07T14:03:45.311669Z",
+        },
+    ]
 
-    @pytest.mark.asyncio
-    @patch("app.api.routes.task.get_current_user", new_callable=AsyncMock)
-    @patch(
-        "app.services.task_service.task_service.get_list_with_progress",
-        new_callable=AsyncMock,
-    )
-    async def test_get_single_list_not_found(self, mock_get_list, mock_get_user):
-        self.setup_mock_user(mock_get_user)
-        mock_get_list.return_value = None
+    response = client.get("/api/task/lists/1/tasks?completed=true&priority=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
 
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.get(
-                f"{BASE_URL}/lists/99", headers={"Authorization": "Bearer mocktoken"}
-            )
 
-        assert response.status_code == 404
+@patch("app.api.routes.task.task_service.update_task", new_callable=AsyncMock)
+def test_update_task_success(mock_update_task):
+    mock_update_task.return_value = {
+        "id": 5,
+        "title": "Updated title",
+        "description": "test",
+        "completed": True,
+        "priority": 3,
+        "created_at": "2025-08-07T15:16:47.489Z",
+    }
 
-    @pytest.mark.asyncio
-    @patch("app.api.routes.task.get_current_user", new_callable=AsyncMock)
-    @patch("app.services.task_service.task_service.create_task", new_callable=AsyncMock)
-    async def test_create_task_success(self, mock_create_task, mock_get_user):
-        self.setup_mock_user(mock_get_user)
-        mock_create_task.return_value = self.task_out
+    payload = {
+        "title": "Updated title",
+        "description": "test",
+        "completed": True,
+        "priority": 3,
+    }
 
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.post(
-                f"{BASE_URL}/lists/1/tasks",
-                json={"title": "New Task", "description": "Sample", "priority": 3},
-                headers={"Authorization": "Bearer mocktoken"},
-            )
+    response = client.patch("/api/task/tasks/5", json=payload)
+    assert response.status_code == 200
+    assert response.json()["title"] == "Updated title"
 
-        assert response.status_code == 201
-        assert response.json()["title"] == "New Task"
 
-    @pytest.mark.asyncio
-    @patch("app.api.routes.task.get_current_user", new_callable=AsyncMock)
-    @patch("app.services.task_service.task_service.update_task", new_callable=AsyncMock)
-    async def test_update_task_success(self, mock_update_task, mock_get_user):
-        self.setup_mock_user(mock_get_user)
-        mock_update_task.return_value = {
-            **self.task_out,
-            "title": "Updated Task",
-            "completed": True,
-        }
+@patch("app.api.routes.task.task_service.update_task", new_callable=AsyncMock)
+def test_update_task_not_found(mock_update_task):
+    mock_update_task.return_value = None
 
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.patch(
-                f"{BASE_URL}/tasks/1",
-                json={"title": "Updated Task", "completed": True},
-                headers={"Authorization": "Bearer mocktoken"},
-            )
+    response = client.patch("/api/task/tasks/999", json={"title": "Doesn't matter"})
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Task not found"
 
-        assert response.status_code == 200
-        assert response.json()["title"] == "Updated Task"
 
-    @pytest.mark.asyncio
-    @patch("app.api.routes.task.get_current_user", new_callable=AsyncMock)
-    @patch("app.services.task_service.task_service.delete_task", new_callable=AsyncMock)
-    async def test_delete_task_success(self, mock_delete_task, mock_get_user):
-        self.setup_mock_user(mock_get_user)
-        mock_delete_task.return_value = {"message": "Task deleted successfully"}
+@patch("app.api.routes.task.task_service.delete_task", new_callable=AsyncMock)
+def test_delete_task(mock_delete_task):
+    mock_delete_task.return_value = {"message": "Task deleted successfully"}
 
-        async with AsyncClient(app=app, base_url="http://test") as ac:
-            response = await ac.delete(
-                f"{BASE_URL}/tasks/1", headers={"Authorization": "Bearer mocktoken"}
-            )
-
-        assert response.status_code == 200
-        assert response.json()["message"] == "Task deleted successfully"
+    response = client.delete("/api/task/tasks/5")
+    assert response.status_code == 200
+    assert response.json()["message"] == "Task deleted successfully"

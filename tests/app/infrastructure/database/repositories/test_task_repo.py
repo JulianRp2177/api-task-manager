@@ -18,23 +18,6 @@ class TestTaskRepository:
         mock_tasklist_class.create.assert_awaited_once_with(name="Test List")
         assert result == mock_instance
 
-    # @patch(
-    # "app.infrastructure.database.repositories.task_repo.TaskList",
-    # autospec=True
-    # )
-
-    # async def test_get_list_success(self, mock_tasklist_class):
-    #     repo = TaskRepository()
-
-    #     mock_instance = AsyncMock()
-    #     mock_tasklist_class.get_or_none.return_value = mock_instance
-
-    #     result = await repo.get_list(1)
-
-    #     mock_tasklist_class.get_or_none.assert_awaited_once_with(id=1)
-    #     mock_instance.fetch_related.assert_awaited_once_with("tasks")
-    #     assert result == mock_instance
-
     @patch("app.infrastructure.database.repositories.task_repo.Task", autospec=True)
     async def test_create_task_success(self, mock_task_class):
         repo = TaskRepository()

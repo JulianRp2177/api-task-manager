@@ -4,7 +4,7 @@ from app.services.auth_service import auth_service
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 @router.post("/register", response_model=UserOut, status_code=201)

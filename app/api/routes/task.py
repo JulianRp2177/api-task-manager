@@ -12,10 +12,10 @@ from app.domain.schemas.task import (
 )
 
 
-router = APIRouter(prefix="/task", tags=["task"])
+router = APIRouter(prefix="/task", tags=["Task"])
 
 
-@router.post("/lists", status_code=201)
+@router.post("/lists", status_code=201, response_model=TaskListOut)
 async def create_list(
     data: TaskListCreate, current_user: User = Depends(get_current_user)
 ) -> TaskListOut:

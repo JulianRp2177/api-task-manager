@@ -29,9 +29,9 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
 
-    app.include_router(auth.router)
-    app.include_router(task.router)
-    app.include_router(assigned_task.router)
+    app.include_router(auth.router, prefix="/api")
+    app.include_router(task.router, prefix="/api")
+    app.include_router(assigned_task.router, prefix="/api")
 
     return app
 

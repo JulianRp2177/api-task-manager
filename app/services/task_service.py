@@ -14,7 +14,15 @@ class TaskService:
         self.repo = task_repo
 
     async def create_list(self, payload: TaskListCreate):
-        return await self.repo.create_list(payload.name)
+        list_created = await self.repo.create_list(payload.name)
+        list_dict = {
+            "id": list_created.id,
+            "name": list_created.name,
+            "created_at": list_created.created_at,
+            "tasks": [],
+            "completed_percentage": 0.0,
+        }
+        return TaskListOut.model_validate(list_dict)
 
     async def get_list_with_progress(self, list_id: int) -> TaskListOut:
         task_list = await self.repo.get_list(list_id)
